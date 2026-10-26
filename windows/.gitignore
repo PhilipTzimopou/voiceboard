@@ -1,0 +1,9 @@
+bin/
+obj/
+build/
+publish/
+dist/
+self-test/
+ggml-*.bin
+speech.wav
+# έκδοση της εφαρμογής: Directory.Build.props

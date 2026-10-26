@@ -1,0 +1,143 @@
+# Χτίζει το Voiceboard σε πραγματικά Windows (έλεγχος + VoiceboardSetup.exe) και σε Mac (έλεγχος ότι χτίζεται).
+# - Σε κάθε αλλαγή: χτίσιμο, tests, αυτόματος έλεγχος, αρχείο εγκατάστασης (artifact).
+# - Με tag «voiceboard-windows-v1.2.3»: επιπλέον νέο Release με το VoiceboardSetup.exe, για να το κατεβάζουν οι θεατές.
+name: Voiceboard
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - "voiceboard-windows-v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write   # μόνο για τη δημιουργία Release από tag
+
+defaults:
+  run:
+    working-directory: windows
+    shell: pwsh
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Έκδοση
+        id: version
+        run: |
+          $ref = "${{ github.ref_name }}"
+          $version = if ($ref -like "voiceboard-windows-v*") { $ref.Substring("voiceboard-windows-v".Length) } else { "1.0.${{ github.run_number }}" }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Έκδοση $version"
+
+      - name: Εικονίδιο
+        run: python make-icon.py build/Voiceboard.ico
+
+      - name: Tests της λογικής
+        run: dotnet test tests/Voiceboard.Core.Tests -c Release
+
+      - name: Χτίσιμο (αυτόνομο, χωρίς εγκατεστημένο .NET στον υπολογιστή του χρήστη)
+        run: dotnet publish src/Voiceboard -c Release -r win-x64 --self-contained true -p:Version=${{ steps.version.outputs.version }} -o publish
+
+      - name: Visual C++ runtime δίπλα στο Whisper
+        # Το whisper.cpp θέλει το Visual C++ runtime. Το βάζουμε μέσα στην εφαρμογή (app-local, όπως επιτρέπει η Microsoft),
+        # ώστε ο θεατής να μη χρειάζεται να εγκαταστήσει τίποτα με δικαιώματα διαχειριστή.
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath
+          $crt = Get-ChildItem "$vs\VC\Redist\MSVC\*\x64\Microsoft.VC14*.CRT" -Directory | Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $crt) { throw "Δεν βρέθηκε το Visual C++ runtime στο $vs" }
+          Write-Host "Visual C++ runtime: $($crt.FullName)"
+          $targets = @("publish") + (Get-ChildItem publish -Recurse -Filter "whisper.dll" | ForEach-Object { $_.DirectoryName } | Sort-Object -Unique)
+          foreach ($target in $targets) { Copy-Item "$($crt.FullName)\*.dll" $target -Force; Write-Host "→ $target" }
+          Get-ChildItem publish -Recurse -Include *.dll | Where-Object { $_.Name -match "whisper|ggml|vcruntime|msvcp" } | ForEach-Object { $_.FullName.Substring((Get-Location).Path.Length) }
+
+      - name: Δείγμα φωνής και μικρό μοντέλο Whisper για τον έλεγχο
+        shell: powershell   # Windows PowerShell 5.1: έχει το System.Speech για τη φωνή
+        run: |
+          Add-Type -AssemblyName System.Speech
+          $speech = New-Object System.Speech.Synthesis.SpeechSynthesizer
+          $format = New-Object System.Speech.AudioFormat.SpeechAudioFormatInfo(16000, [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen, [System.Speech.AudioFormat.AudioChannel]::Mono)
+          $speech.SetOutputToWaveFile("$PWD\speech.wav", $format)
+          $speech.Speak("Hello from Voiceboard. This is a short test of dictation on Windows.")
+          $speech.Dispose()
+          Invoke-WebRequest -Uri "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin" -OutFile ggml-tiny.bin
+          Get-Item speech.wav, ggml-tiny.bin | Format-Table Name, Length
+
+      - name: Αυτόματος έλεγχος σε Windows
+        timeout-minutes: 10
+        run: |
+          $process = Start-Process -FilePath publish\Voiceboard.exe -ArgumentList "--self-test", "self-test", "--model", "ggml-tiny.bin", "--wav", "speech.wav", "--language", "en", "--expect", "test" -Wait -PassThru
+          if (Test-Path self-test\results.json) { Get-Content self-test\results.json -Encoding utf8 } else { Write-Host "Δεν γράφτηκε το results.json" }
+          if (Test-Path self-test\data\voiceboard.log) { Get-Content self-test\data\voiceboard.log -Encoding utf8 }
+          if ($process.ExitCode -ne 0) { throw "Ο έλεγχος απέτυχε (κωδικός $($process.ExitCode))" }
+
+      - name: Αρχείο εγκατάστασης (Inno Setup)
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
+          & $iscc /DAppVersion=${{ steps.version.outputs.version }} /DSourceDir=..\publish installer\Voiceboard.iss
+          if ($LASTEXITCODE -ne 0) { throw "Το Inno Setup απέτυχε" }
+          Get-Item dist\VoiceboardSetup.exe | Format-Table Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VoiceboardSetup-${{ steps.version.outputs.version }}
+          path: windows/dist/VoiceboardSetup.exe
+
+      - name: Δοκιμή του αρχείου εγκατάστασης (αθόρυβη εγκατάσταση και απεγκατάσταση)
+        timeout-minutes: 10
+        run: |
+          $setup = Start-Process -FilePath dist\VoiceboardSetup.exe -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/TASKS=startup" -Wait -PassThru
+          if ($setup.ExitCode -ne 0) { throw "Η εγκατάσταση απέτυχε (κωδικός $($setup.ExitCode))" }
+          $installed = "$env:LOCALAPPDATA\Programs\Voiceboard\Voiceboard.exe"
+          if (-not (Test-Path $installed)) { throw "Δεν βρέθηκε το $installed" }
+          Start-Sleep -Seconds 8
+          $running = Get-Process Voiceboard -ErrorAction SilentlyContinue
+          Write-Host "Τρέχει μετά την εγκατάσταση: $([bool]$running)"
+          $log = "$env:APPDATA\Voiceboard\voiceboard.log"
+          if (Test-Path $log) { Get-Content $log -Encoding utf8 }
+          $run = (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -ErrorAction SilentlyContinue).Voiceboard
+          Write-Host "Εκκίνηση με τα Windows: $run"
+          if (-not $running) { throw "Η εφαρμογή δεν έμεινε ανοιχτή μετά την εγκατάσταση" }
+          $uninstaller = "$env:LOCALAPPDATA\Programs\Voiceboard\unins000.exe"
+          $remove = Start-Process -FilePath $uninstaller -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait -PassThru
+          if ($remove.ExitCode -ne 0) { throw "Η απεγκατάσταση απέτυχε (κωδικός $($remove.ExitCode))" }
+          Start-Sleep -Seconds 3
+          if (Get-Process Voiceboard -ErrorAction SilentlyContinue) { throw "Η εφαρμογή τρέχει ακόμα μετά την απεγκατάσταση" }
+          Write-Host "Εγκατάσταση και απεγκατάσταση: OK"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: voiceboard-self-test
+          path: |
+            windows/self-test/*.png
+            windows/self-test/results.json
+            windows/self-test/data/voiceboard.log
+
+      - name: Release για τους θεατές
+        if: startsWith(github.ref, 'refs/tags/voiceboard-windows-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Voiceboard για Windows ${{ steps.version.outputs.version }}
+          files: windows/dist/VoiceboardSetup.exe
+          body: |
+            Voiceboard για Windows: υπαγόρευση με Ctrl + Win, δωρεάν με το Whisper ή με το Scribe v2 της ElevenLabs.
+            Κατέβασε το VoiceboardSetup.exe και άνοιξέ το. Οδηγίες για το AI σου: https://github.com/PhilipTzimopou/voiceboard/blob/main/windows/AI-INSTALL.md
+
+  mac:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Χτίσιμο για Mac (χωρίς εγκατάσταση)
+        working-directory: mac
+        shell: bash
+        run: BUILD_ONLY=1 ./build.sh

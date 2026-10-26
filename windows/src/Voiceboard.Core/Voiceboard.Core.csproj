@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Η λογική χωρίς οθόνη: λεξιλόγιο, κομμάτια ήχου, μεταγραφή, ιστορικό. Τρέχει και σε Mac, για τα tests. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Voiceboard.Core</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Whisper.net" Version="1.9.1" />
+    <PackageReference Include="Whisper.net.Runtime" Version="1.9.1" />
+    <PackageReference Include="NAudio.Core" Version="2.2.1" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.10" />
+    <!-- Νεότερη SQLite από αυτήν που φέρνει το Microsoft.Data.Sqlite (η 2.1.11 έχει γνωστό κενό ασφαλείας). -->
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.13" />
+  </ItemGroup>
+</Project>

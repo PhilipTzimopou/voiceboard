@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <UseWPF>true</UseWPF>
+    <!-- Μόνο για το εικονίδιο στη γραμμή εργασιών (NotifyIcon). -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>Voiceboard</RootNamespace>
+    <AssemblyName>Voiceboard</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <StartupObject>Voiceboard.Program</StartupObject>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <!-- Η κλίμακα οθόνης ορίζεται στο app.manifest, όπως θέλει το WPF· η συμβουλή αφορά εφαρμογές Windows Forms. -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
+  </PropertyGroup>
+  <!-- Το εικονίδιο το φτιάχνει το make-icon.py (τα .ico δεν ανεβαίνουν στο GitHub). -->
+  <PropertyGroup Condition="Exists('..\..\build\Voiceboard.ico')">
+    <ApplicationIcon>..\..\build\Voiceboard.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Ίδια ονόματα σε WPF και Windows Forms (Application, Clipboard, Color…): κρατάμε μόνο τα WPF. -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+    <!-- Το WPF βγάζει το System.IO από τα αυτόματα using (σύγκρουση με το Shapes.Path)· το θέλουμε. -->
+    <Using Include="System.IO" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="NAudio.Core" Version="2.2.1" />
+    <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
+    <!-- Whisper στην κάρτα γραφικών, όπου υπάρχει Vulkan· αλλιώς στον επεξεργαστή (Whisper.net.Runtime, από το Core). -->
+    <PackageReference Include="Whisper.net.Runtime.Vulkan" Version="1.9.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Voiceboard.Core\Voiceboard.Core.csproj" />
+  </ItemGroup>
+</Project>
