@@ -31,9 +31,9 @@ WizardStyle=modern
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0.17763
-; Κλείνει την εφαρμογή αν τρέχει, πριν από αναβάθμιση ή απεγκατάσταση (και στην αθόρυβη εγκατάσταση).
-CloseApplications=force
-RestartApplications=no
+; Η εφαρμογή κλείνει πριν από αναβάθμιση ή απεγκατάσταση με το [Code] στο τέλος (taskkill): το κλείσιμο του
+; παραθύρου την κρύβει στη γραμμή εργασιών, οπότε το Restart Manager των Windows δεν αρκεί.
+CloseApplications=no
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -58,3 +58,24 @@ Filename: "{app}\Voiceboard.exe"; Description: "Launch Voiceboard"; Flags: nowai
 
 ; Τα δεδομένα (%APPDATA%\Voiceboard: λεξιλόγιο, ιστορικό, κλειδί, μοντέλο Whisper 3 GB) μένουν μετά την απεγκατάσταση,
 ; ώστε μια επανεγκατάσταση να μη χρειάζεται νέο κατέβασμα. Σβήνονται χειροκίνητα από τον φάκελο.
+
+[Code]
+procedure CloseVoiceboard();
+var
+  ResultCode: Integer;
+begin
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM Voiceboard.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Sleep(500);
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  CloseVoiceboard();
+  Result := '';
+end;
+
+function InitializeUninstall(): Boolean;
+begin
+  CloseVoiceboard();
+  Result := True;
+end;

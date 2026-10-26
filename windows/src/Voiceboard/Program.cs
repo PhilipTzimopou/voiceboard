@@ -52,6 +52,8 @@ static class Program
         }) { IsBackground = true, Name = "voiceboard.single-instance" }.Start();
 
         app.Startup += (_, _) => controller.Start(showWindow: !args.Contains("--startup"));
+        // Αποσύνδεση ή τερματισμός των Windows: κλείνουμε κανονικά (το κλείσιμο του παραθύρου μόνο το κρύβει).
+        app.SessionEnding += (_, _) => controller.Quit();
         var code = app.Run();
         GC.KeepAlive(mutex);
         return code;
