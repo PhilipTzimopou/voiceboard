@@ -94,7 +94,9 @@ jobs:
       - name: Δοκιμή του αρχείου εγκατάστασης (αθόρυβη εγκατάσταση και απεγκατάσταση)
         timeout-minutes: 10
         run: |
-          $setup = Start-Process -FilePath dist\VoiceboardSetup.exe -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/TASKS=startup" -Wait -PassThru
+          # Όχι -Wait: θα περίμενε και το Voiceboard, που ανοίγει μετά την εγκατάσταση και μένει ανοιχτό.
+          $setup = Start-Process -FilePath dist\VoiceboardSetup.exe -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/TASKS=startup" -PassThru
+          $setup.WaitForExit()
           if ($setup.ExitCode -ne 0) { throw "Η εγκατάσταση απέτυχε (κωδικός $($setup.ExitCode))" }
           $installed = "$env:LOCALAPPDATA\Programs\Voiceboard\Voiceboard.exe"
           if (-not (Test-Path $installed)) { throw "Δεν βρέθηκε το $installed" }
@@ -107,7 +109,8 @@ jobs:
           Write-Host "Εκκίνηση με τα Windows: $run"
           if (-not $running) { throw "Η εφαρμογή δεν έμεινε ανοιχτή μετά την εγκατάσταση" }
           $uninstaller = "$env:LOCALAPPDATA\Programs\Voiceboard\unins000.exe"
-          $remove = Start-Process -FilePath $uninstaller -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait -PassThru
+          $remove = Start-Process -FilePath $uninstaller -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -PassThru
+          $remove.WaitForExit()
           if ($remove.ExitCode -ne 0) { throw "Η απεγκατάσταση απέτυχε (κωδικός $($remove.ExitCode))" }
           Start-Sleep -Seconds 3
           if (Get-Process Voiceboard -ErrorAction SilentlyContinue) { throw "Η εφαρμογή τρέχει ακόμα μετά την απεγκατάσταση" }

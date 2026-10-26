@@ -39,7 +39,9 @@ Write-Host "Κατέβηκε η έκδοση $($release.tag_name)"
 ### Βήμα 2: αθόρυβη εγκατάσταση
 
 ```powershell
-$result = Start-Process $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/TASKS=startup" -Wait -PassThru
+# Όχι -Wait: θα περίμενε και το Voiceboard, που ανοίγει μόνο του μετά την εγκατάσταση και μένει ανοιχτό.
+$result = Start-Process $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/TASKS=startup" -PassThru
+$result.WaitForExit()
 if ($result.ExitCode -ne 0) { throw "Η εγκατάσταση απέτυχε (κωδικός $($result.ExitCode))" }
 Test-Path "$env:LOCALAPPDATA\Programs\Voiceboard\Voiceboard.exe"
 ```
@@ -90,7 +92,7 @@ Get-Content "$env:APPDATA\Voiceboard\voiceboard.log" -Tail 40 -Encoding utf8
 ### Απεγκατάσταση
 
 ```powershell
-Start-Process "$env:LOCALAPPDATA\Programs\Voiceboard\unins000.exe" -ArgumentList "/VERYSILENT" -Wait
+(Start-Process "$env:LOCALAPPDATA\Programs\Voiceboard\unins000.exe" -ArgumentList "/VERYSILENT" -PassThru).WaitForExit()
 ```
 
 Τα δεδομένα (λεξιλόγιο, ιστορικό, κλειδί, μοντέλο Whisper) μένουν στο `%APPDATA%\Voiceboard`. Αν ο χρήστης θέλει να φύγουν κι αυτά,
