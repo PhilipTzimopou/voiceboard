@@ -100,6 +100,9 @@ sealed class MainWindow : Window
     /// Το κλείσιμο κρύβει το παράθυρο· η εφαρμογή συνεχίζει στη γραμμή εργασιών.
     public bool AllowClose { get; set; }
 
+    /// Όλη η σελίδα, και όσα δεν χωρούν στην οθόνη (για τις εικόνες του αυτόματου ελέγχου).
+    public FrameworkElement? PageContent => scroller.Content as FrameworkElement;
+
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
     {
         if (AllowClose) return;

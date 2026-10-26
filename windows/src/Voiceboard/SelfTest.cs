@@ -93,6 +93,10 @@ static class SelfTest
             await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
             var file = Path.Combine(output, $"window-{page.ToString().ToLowerInvariant()}.png");
             Save((FrameworkElement)window.Content, file);
+            if (window.PageContent is { } page2)
+            {
+                Save(page2, Path.Combine(output, $"page-{page.ToString().ToLowerInvariant()}.png"));
+            }
             files.Add(Path.GetFileName(file));
             window.Close();
         }
