@@ -47,5 +47,11 @@ json.dump(config, open(path, "w"), indent=2, ensure_ascii=False)'
 chmod 600 "$CONFIG"
 
 "$DIR/build.sh"
-open "$HOME/Applications/Voiceboard.app"
+# Αμέσως μετά το κλείσιμο της παλιάς εφαρμογής το macOS μπορεί να αρνηθεί το άνοιγμα (σφάλμα -600): περιμένουμε και ξαναδοκιμάζουμε.
+APP="$HOME/Applications/Voiceboard.app"
+for attempt in 1 2 3; do
+  sleep 1
+  open "$APP" 2>/dev/null && break
+  [ "$attempt" = 3 ] && echo "Άνοιξε το Voiceboard από τον φάκελο Εφαρμογές του λογαριασμού σου (~/Applications)."
+done
 echo "Έτοιμο. Το Voiceboard τρέχει στη γραμμή μενού, πάνω δεξιά."
