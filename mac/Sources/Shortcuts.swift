@@ -1,5 +1,5 @@
+import AppKit
 import CoreGraphics
-import Foundation
 
 /// Μια συντόμευση που διάλεξε ο χρήστης: πλήκτρα ελέγχου (Control, Option, Command, Shift, Fn) με προαιρετικά ένα ακόμα
 /// πλήκτρο, ή ένα κουμπί του ποντικιού. Αποθηκεύεται ως κείμενο, π.χ. "control+option", "roption",
@@ -115,6 +115,15 @@ struct Combo: Equatable {
     }
 
     var label: String { keys.joined(separator: " + ") }
+
+    /// Ο χαρακτήρας που γράφει το πλήκτρο στο πληκτρολόγιο του χρήστη (π.χ. «A», «Ψ»). Μόνο από το κύριο νήμα.
+    static func typedLabel(_ code: Int64) -> String {
+        dispatchPrecondition(condition: .onQueue(.main))
+        guard let event = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(code), keyDown: true),
+              let characters = NSEvent(cgEvent: event)?.charactersIgnoringModifiers?.uppercased(),
+              !characters.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "" }
+        return characters
+    }
 
     // Τα bits δεξιού/αριστερού πλήκτρου που βάζει το macOS στα flags (NX_DEVICE…KEYMASK).
     private static let bits: [(left: UInt64, right: UInt64)] = [(0x01, 0x2000), (0x20, 0x40), (0x08, 0x10), (0x02, 0x04)]

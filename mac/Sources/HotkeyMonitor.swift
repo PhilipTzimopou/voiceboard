@@ -32,7 +32,6 @@ final class HotkeyMonitor {
     private var captureSides = [(left: Bool, right: Bool)](repeating: (false, false), count: 4)
     private var captureFn = false
     private var captureKey: Int64 = -1
-    private var captureLabel = ""
     private var captureKeyDown = false
 
     var isRunning: Bool { lock.lock(); defer { lock.unlock() }; return tap != nil }
@@ -199,8 +198,6 @@ final class HotkeyMonitor {
             if keyCode == 53 && !sides.contains(where: { $0.left || $0.right }) { finishCapture(done, nil); return nil }
             captureKey = keyCode
             captureKeyDown = true
-            let characters = NSEvent(cgEvent: event)?.charactersIgnoringModifiers?.uppercased() ?? ""
-            captureLabel = characters.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : characters
         case .keyUp:
             captureKeyDown = false
         case .flagsChanged:
@@ -230,7 +227,6 @@ final class HotkeyMonitor {
                               command: pick(captureSides[2]), shift: pick(captureSides[3]))
             combo.fn = captureFn && captureKey < 0
             combo.key = captureKey
-            combo.keyLabel = captureLabel
             finishCapture(done, combo)
         }
         return nil
@@ -241,8 +237,16 @@ final class HotkeyMonitor {
         captureSides = [(left: Bool, right: Bool)](repeating: (false, false), count: 4)
         captureFn = false
         captureKey = -1
-        captureLabel = ""
         captureKeyDown = false
-        DispatchQueue.main.async { done(combo) }
+        // Το όνομα του πλήκτρου το βρίσκουμε στο κύριο νήμα: το macOS διαβάζει τη διάταξη του πληκτρολογίου
+        // μόνο από εκεί, και από το νήμα της παρακολούθησης κλείνει την εφαρμογή.
+        DispatchQueue.main.async {
+            var result = combo
+            if var named = result, named.key >= 0, named.keyLabel.isEmpty {
+                named.keyLabel = Combo.typedLabel(named.key)
+                result = named
+            }
+            done(result)
+        }
     }
 }
