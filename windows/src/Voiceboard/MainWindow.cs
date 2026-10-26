@@ -742,7 +742,8 @@ sealed class MainWindow : Window
             var runtime when runtime.Contains("Vulkan", StringComparison.OrdinalIgnoreCase) => "Έτοιμο, τρέχει στην κάρτα γραφικών (Vulkan).",
             _ => "Έτοιμο, τρέχει στον επεξεργαστή.",
         };
-        return Stack(6, label, Row(6, Icon("", 12, Theme.Blue), Text(where, 12, color: Theme.Secondary)));
+        var ready = model.WhisperRuntime != null || model.SpeechModel != SpeechModel.Whisper;
+        return Stack(6, label, Row(6, Icon(ready ? "\uE73E" : "\uE895", 12, Theme.Blue), Text(where, 12, color: Theme.Secondary)));
     }
 
     private string DownloadText() =>
@@ -761,8 +762,9 @@ sealed class MainWindow : Window
             Padding = new Thickness(12),
             Opacity = enabled ? 1 : 0.5,
             Cursor = enabled ? Cursors.Hand : Cursors.Arrow,
-            Child = Row(12, radio, Stack(4, Text(title, 13, bold: true), Text(detail, 12, color: Theme.Secondary))),
+            Child = Spread(Stack(4, Text(title, 13, bold: true), Text(detail, 12, color: Theme.Secondary)), radio, leftDock: true),
         };
+        radio.Margin = new Thickness(0, 0, 12, 0);
         if (enabled) option.MouseLeftButtonUp += (_, _) => select();
         return option;
     }

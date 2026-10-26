@@ -99,12 +99,14 @@ static class Ui
     }
 
     /// Οριζόντια γραμμή με ένα στοιχείο τέρμα δεξιά (σαν το Spacer() του SwiftUI).
-    public static DockPanel Spread(UIElement left, UIElement right)
+    /// Με leftDock το δεύτερο στοιχείο μπαίνει αριστερά και το πρώτο γεμίζει το υπόλοιπο πλάτος, ώστε το κείμενό του να αλλάζει γραμμή.
+    public static DockPanel Spread(UIElement fill, UIElement side, bool leftDock = false)
     {
         var dock = new DockPanel { LastChildFill = true };
-        DockPanel.SetDock(right, Dock.Right);
-        dock.Children.Add(right);
-        dock.Children.Add(left);
+        DockPanel.SetDock(side, leftDock ? Dock.Left : Dock.Right);
+        if (leftDock && side is FrameworkElement element) element.VerticalAlignment = VerticalAlignment.Top;
+        dock.Children.Add(side);
+        dock.Children.Add(fill);
         return dock;
     }
 
