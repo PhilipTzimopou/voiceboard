@@ -48,6 +48,48 @@ final class AppModel: ObservableObject {
     var openMicrophone: () -> Void = {}
     var openLog: () -> Void = {}
     var shortcutsChanged: () -> Void = {}
+    /// Καταγραφή νέας συντόμευσης από τα πλήκτρα (το συνδέει ο AppDelegate με την παρακολούθηση πλήκτρων).
+    var captureShortcut: (@escaping (Combo?) -> Void) -> Void = { $0(nil) }
+    var cancelCapture: () -> Void = {}
+    @Published var capturing: String?        // "ptt" ή "hands" όσο καταγράφεται νέα συντόμευση
+    @Published var shortcutError = ""
+
+    /// Η συντόμευση «κράτα και μίλα» δεν μένει ποτέ κενή: χωρίς αυτήν δεν υπαγορεύεις.
+    var pushToTalkCombo: Combo {
+        let combo = Combo.parse(pushToTalk)
+        return combo.isEmpty ? Combo.parse(Combo.defaultPushToTalk) : combo
+    }
+    var handsFreeCombo: Combo { Combo.parse(handsFree) }
+
+    func startCapture(_ which: String) {
+        if capturing != nil { cancelCapture() }
+        capturing = which
+        shortcutError = ""
+        captureShortcut { [weak self] combo in
+            guard let self, self.capturing == which else { return }
+            self.capturing = nil
+            if let combo { self.setShortcut(which, combo) }
+        }
+    }
+
+    func stopCapture() {
+        cancelCapture()
+        capturing = nil
+    }
+
+    func setShortcut(_ which: String, _ combo: Combo) {
+        let other = which == "ptt" ? handsFreeCombo : pushToTalkCombo
+        shortcutError = ""
+        if !combo.isEmpty && !combo.isSafe {
+            shortcutError = "Το «\(combo.label)» το πατάς συχνά όταν γράφεις. Διάλεξε συνδυασμό με Control, Option, Command ή Fn, ένα πλήκτρο F ή κουμπί του ποντικιού."
+        } else if !combo.isEmpty && combo == other {
+            shortcutError = "Το «\(combo.label)» είναι ήδη η άλλη συντόμευση."
+        } else if which == "ptt" {
+            pushToTalk = combo.string
+        } else {
+            handsFree = combo.string
+        }
+    }
 
     var stats: DictationStats { DictationStats(history) }
 
@@ -284,15 +326,15 @@ struct HomeView: View {
             Card {
                 HStack(spacing: 8) {
                     Text("Κράτα").font(Theme.font(13))
-                    let keys = Shortcuts.pushToTalk(model.pushToTalk).keys
+                    let keys = model.pushToTalkCombo.keys
                     ForEach(Array(keys.enumerated()), id: \.offset) { index, key in
                         if index > 0 { Text("+").font(Theme.font(13)) }
                         KeyCap(label: key)
                     }
                     Text("και μίλα.").font(Theme.font(13))
                     Spacer()
-                    if model.handsFree != "none" {
-                        KeyCap(label: Shortcuts.handsFree(model.handsFree).label)
+                    if !model.handsFreeCombo.isEmpty {
+                        KeyCap(label: model.handsFreeCombo.label)
                         Text("χωρίς χέρια").font(Theme.font(13)).foregroundStyle(Theme.secondary)
                     }
                     KeyCap(label: "Esc")
@@ -912,16 +954,14 @@ struct SettingsView: View {
             Card {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Συντομεύσεις").font(Theme.font(15, bold: true))
-                    Picker("Κράτα πατημένα και μίλα", selection: $model.pushToTalk) {
-                        ForEach(Shortcuts.pushToTalk) { option in Text(option.label).tag(option.id) }
-                    }
-                    .font(Theme.font(13))
-                    Picker("Χωρίς χέρια (ξανά κλικ για τέλος)", selection: $model.handsFree) {
-                        ForEach(Shortcuts.handsFree) { option in Text(option.label).tag(option.id) }
-                    }
-                    .font(Theme.font(13))
+                    shortcutRow("Κράτα πατημένα και μίλα", "ptt", model.pushToTalkCombo, Combo.parse(Combo.defaultPushToTalk))
+                    shortcutRow("Χωρίς χέρια (ξανά για τέλος)", "hands", model.handsFreeCombo, Combo.parse(Combo.defaultHandsFree))
                     shortcut(["Esc"], "Ακύρωση")
-                    Text("Η προεπιλογή, Control + Option, είναι ίδια με το Wispr Flow. Το κουμπί του ποντικιού που διαλέγεις δεν κάνει πια τη συνηθισμένη του δουλειά, π.χ. το μεσαίο κλικ δεν ανοίγει συνδέσμους σε νέα καρτέλα.")
+                    if !model.shortcutError.isEmpty {
+                        Label(model.shortcutError, systemImage: "exclamationmark.triangle")
+                            .font(Theme.font(12)).foregroundStyle(Theme.orange).fixedSize(horizontal: false, vertical: true)
+                    }
+                    Text("Πάτα «Αλλαγή» και μετά τα πλήκτρα που θέλεις (π.χ. Control + Space, δεξί Option, F5) ή ένα κουμπί του ποντικιού. Τα πλήκτρα της συντόμευσης δεν φτάνουν πια στις άλλες εφαρμογές, ούτε το κουμπί του ποντικιού που διαλέγεις.")
                         .font(Theme.font(12)).foregroundStyle(Theme.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -962,6 +1002,30 @@ struct SettingsView: View {
             }
         }
         .onAppear { model.refreshDevices() }
+        .onDisappear { if model.capturing != nil { model.stopCapture() } }
+    }
+
+    private func shortcutRow(_ title: String, _ which: String, _ combo: Combo, _ fallback: Combo) -> some View {
+        HStack(spacing: 6) {
+            Text(title).font(Theme.font(13)).frame(width: 230, alignment: .leading)
+            if model.capturing == which {
+                Text("Πάτα τα πλήκτρα ή ένα κουμπί του ποντικιού… (Esc για ακύρωση)")
+                    .font(Theme.font(13, bold: true)).foregroundStyle(Theme.blue)
+            } else {
+                ForEach(Array(combo.keys.enumerated()), id: \.offset) { index, key in
+                    if index > 0 { Text("+").font(Theme.font(13)) }
+                    KeyCap(label: key)
+                }
+            }
+            Spacer()
+            if model.capturing == which {
+                Button("Άκυρο") { model.stopCapture() }
+            } else {
+                Button("Αλλαγή") { model.startCapture(which) }
+                if combo != fallback { Button("Προεπιλογή") { model.setShortcut(which, fallback) } }
+                if which == "hands" && !combo.isEmpty { Button("Καμία") { model.setShortcut(which, .none) } }
+            }
+        }
     }
 
     private func shortcut(_ keys: [String], _ meaning: String) -> some View {

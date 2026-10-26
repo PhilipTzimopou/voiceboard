@@ -65,6 +65,8 @@ sealed class Controller
         hotkeys.OnToggleHandsFree = ToggleHandsFree;
         hotkeys.OnCancel = Cancel;
         hotkeys.Configure(model.PushToTalk, model.HandsFree);
+        model.CaptureShortcut = done => hotkeys.Capture(done);
+        model.CancelCapture = hotkeys.CancelCapture;
 
         if (hotkeys.Start()) Log.Write("Οι συντομεύσεις είναι ενεργές");
         RefreshPermissions();
@@ -79,7 +81,7 @@ sealed class Controller
             if (what == "shortcuts")
             {
                 hotkeys.Configure(model.PushToTalk, model.HandsFree);
-                Log.Write($"Συντομεύσεις: {Shortcuts.Label(Shortcuts.PushToTalkFor(model.PushToTalk))}, {Shortcuts.HandsFreeFor(model.HandsFree).Label}");
+                Log.Write($"Συντομεύσεις: {model.PushToTalk.Label}, χωρίς χέρια {model.HandsFree.Label}");
             }
         };
         ApplySpeechModel();
@@ -291,7 +293,7 @@ sealed class Controller
         var elapsed = DateTime.UtcNow - current.Started;
         if (!current.HandsFree && elapsed > TimeSpan.FromSeconds(0.3))
         {
-            if (!Shortcuts.PhysicallyHeld(model.PushToTalk))
+            if (!model.PushToTalk.PhysicallyHeld())
             {
                 Log.Write("Τα πλήκτρα έχουν αφεθεί χωρίς να έρθει μήνυμα, τελειώνω την ηχογράφηση");
                 FinishRecording();

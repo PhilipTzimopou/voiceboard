@@ -64,7 +64,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotkeys.onPushToTalkKeys = { [weak self] held in self?.pushToTalkKeys(held) }
         hotkeys.onToggleHandsFree = { [weak self] in self?.toggleHandsFree() }
         hotkeys.onCancel = { [weak self] in self?.cancel() }
-        hotkeys.configure(pushToTalk: model.pushToTalk, handsFree: model.handsFree)
+        hotkeys.configure(pushToTalk: model.pushToTalkCombo, handsFree: model.handsFreeCombo)
 
         AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
             if !granted { Log.write("Δεν δόθηκε άδεια μικροφώνου") }
@@ -102,9 +102,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.importFromWispr = { [weak self] in self?.importFromWispr(showResult: true) }
         model.shortcutsChanged = { [weak self] in
             guard let self else { return }
-            self.hotkeys.configure(pushToTalk: self.model.pushToTalk, handsFree: self.model.handsFree)
-            Log.write("Συντομεύσεις: \(Shortcuts.pushToTalk(self.model.pushToTalk).label), \(Shortcuts.handsFree(self.model.handsFree).label)")
+            self.hotkeys.configure(pushToTalk: self.model.pushToTalkCombo, handsFree: self.model.handsFreeCombo)
+            Log.write("Συντομεύσεις: \(self.model.pushToTalkCombo.label), χωρίς χέρια \(self.model.handsFreeCombo.label)")
         }
+        model.captureShortcut = { [weak self] done in self?.hotkeys.capture(done) }
+        model.cancelCapture = { [weak self] in self?.hotkeys.cancelCapture() }
         model.openAccessibility = {
             NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
         }
@@ -233,7 +235,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let elapsed = Date().timeIntervalSince(current.started)
         if !current.handsFree, elapsed > 0.3 {
             let flags = CGEventSource.flagsState(.combinedSessionState)
-            if !Shortcuts.stillHeld(model.pushToTalk, flags) {
+            if !model.pushToTalkCombo.stillHeld(flags) {
                 Log.write("Τα πλήκτρα έχουν αφεθεί χωρίς να έρθει μήνυμα, τελειώνω την ηχογράφηση")
                 finishRecording()
                 return

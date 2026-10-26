@@ -183,8 +183,8 @@ static class SelfTest
         return "μπήκε στο πεδίο, το πρόχειρο επανήλθε";
     }
 
-    /// Για κάθε επιλογή συντόμευσης: πατά και αφήνει τα πλήκτρα σαν πραγματικό πληκτρολόγιο και ελέγχει ότι
-    /// η παρακολούθηση είδε «πατημένα → αφέθηκαν». Επίσης ότι Ctrl + Win + Shift ΔΕΝ μετράει ως Ctrl + Win.
+    /// Πατά και αφήνει πλήκτρα σαν πραγματικό πληκτρολόγιο και ελέγχει ότι η παρακολούθηση είδε «πατημένα → αφέθηκαν»
+    /// για διάφορες συντομεύσεις (μόνο πλήκτρα ελέγχου, με πλήκτρο, με πλευρά). Μετά καταγράφει μια νέα συντόμευση.
     private static async Task<string> HotkeysSeeInjectedKeys()
     {
         var events = new List<bool>();
@@ -196,33 +196,59 @@ static class SelfTest
             input.u.ki.dwExtraInfo = UIntPtr.Zero;   // σαν πραγματικό πληκτρολόγιο, όχι σαν δικό μας πλήκτρο
             return input;
         }
-        async Task<string> Press(string preset, params int[] keys)
+        async Task Tap(params int[] keys)
         {
-            monitor.Configure(preset, "middle");
-            events.Clear();
             Native.Send(keys.Select(k => Key(k, false)).ToArray());
             await Task.Delay(300);
             Native.Send(keys.Reverse().Select(k => Key(k, true)).ToArray());
             await Task.Delay(300);
+        }
+        async Task<string> Press(string combo, params int[] keys)
+        {
+            monitor.Configure(Combo.Parse(combo), Combo.None);
+            events.Clear();
+            await Tap(keys);
             return string.Join(" → ", events.Select(e => e ? "πατημένα" : "αφέθηκαν"));
         }
         var results = new List<string>();
-        foreach (var (preset, keys) in new (string, int[])[]
+        try
         {
-            ("ctrl-win", [Native.VK_LCONTROL, Native.VK_LWIN]),
-            ("ctrl-shift", [Native.VK_LCONTROL, Native.VK_LSHIFT]),
-            ("alt-win", [Native.VK_LMENU, Native.VK_LWIN]),
-            ("right-ctrl", [Native.VK_RCONTROL]),
-        })
-        {
-            var seen = await Press(preset, keys);
-            results.Add($"{preset}: {seen}");
-            if (seen != "πατημένα → αφέθηκαν") { monitor.Stop(); throw new Exception(string.Join("; ", results)); }
+            foreach (var (combo, keys) in new (string, int[])[]
+            {
+                ("ctrl+win", [Native.VK_LCONTROL, Native.VK_LWIN]),
+                ("ctrl+shift", [Native.VK_LCONTROL, Native.VK_LSHIFT]),
+                ("rctrl", [Native.VK_RCONTROL]),
+                ("ctrl+key:20", [Native.VK_LCONTROL, 0x20]),   // Ctrl + Space
+                ("key:77", [0x77]),                             // F8
+            })
+            {
+                var seen = await Press(combo, keys);
+                results.Add($"{Combo.Parse(combo).Label}: {seen}");
+                if (seen != "πατημένα → αφέθηκαν") throw new Exception(string.Join("; ", results));
+            }
+            var extra = await Press("ctrl+win", Native.VK_LCONTROL, Native.VK_LSHIFT, Native.VK_LWIN);
+            results.Add($"Ctrl + Win με Shift: {(extra.Length == 0 ? "σωστά τίποτα" : extra)}");
+            if (extra.Contains("πατημένα")) throw new Exception(string.Join("; ", results));
+            var left = await Press("rctrl", Native.VK_LCONTROL);
+            results.Add($"Δεξί Ctrl με το αριστερό: {(left.Length == 0 ? "σωστά τίποτα" : left)}");
+            if (left.Contains("πατημένα")) throw new Exception(string.Join("; ", results));
+
+            // Καταγραφή νέας συντόμευσης, όπως με το κουμπί «Αλλαγή» στις Ρυθμίσεις: Ctrl + Shift + F8.
+            Combo? captured = null;
+            var finished = false;
+            monitor.Capture(c => { captured = c; finished = true; });
+            await Tap(Native.VK_LCONTROL, Native.VK_LSHIFT, 0x77);
+            for (var i = 0; i < 10 && !finished; i++) await Task.Delay(100);
+            results.Add($"Καταγραφή: {captured?.Label ?? "τίποτα"} ({captured})");
+            if (captured?.ToString() != "ctrl+shift+key:77") throw new Exception(string.Join("; ", results));
+            monitor.Capture(c => { captured = c; finished = true; });
+            finished = false;
+            await Tap(Native.VK_RCONTROL);
+            for (var i = 0; i < 10 && !finished; i++) await Task.Delay(100);
+            results.Add($"Καταγραφή: {captured?.Label ?? "τίποτα"} ({captured})");
+            if (captured?.ToString() != "rctrl") throw new Exception(string.Join("; ", results));
         }
-        var extra = await Press("ctrl-win", Native.VK_LCONTROL, Native.VK_LSHIFT, Native.VK_LWIN);
-        monitor.Stop();
-        results.Add($"ctrl-win με Shift: {(extra.Length == 0 ? "σωστά τίποτα" : extra)}");
-        if (extra.Contains("πατημένα")) throw new Exception(string.Join("; ", results));
+        finally { monitor.Stop(); }
         return string.Join("; ", results);
     }
 

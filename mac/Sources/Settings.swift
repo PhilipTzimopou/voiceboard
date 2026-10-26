@@ -78,15 +78,15 @@ final class Settings {
         set { defaults.set(newValue, forKey: "soundsEnabled") }
     }
 
-    /// Τα πλήκτρα που κρατάς για να μιλήσεις (Shortcuts.pushToTalk).
+    /// Η συντόμευση «κράτα και μίλα», όποια διάλεξε ο χρήστης (Combo στο Shortcuts.swift).
     var pushToTalk: String {
-        get { defaults.string(forKey: "pushToTalk") ?? "control-option" }
+        get { defaults.string(forKey: "pushToTalk") ?? Combo.defaultPushToTalk }
         set { defaults.set(newValue, forKey: "pushToTalk") }
     }
 
-    /// Το κουμπί του ποντικιού για ηχογράφηση χωρίς χέρια (Shortcuts.handsFree).
+    /// Η συντόμευση «χωρίς χέρια» στην ίδια μορφή· κενό = καμία.
     var handsFree: String {
-        get { defaults.string(forKey: "handsFree") ?? "middle" }
+        get { defaults.string(forKey: "handsFree") ?? Combo.defaultHandsFree }
         set { defaults.set(newValue, forKey: "handsFree") }
     }
 

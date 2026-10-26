@@ -43,17 +43,22 @@ sealed class AppModel
 
     public string MicrophoneId { get => Settings.Shared.MicrophoneId; set => Settings.Shared.MicrophoneId = value; }
     public bool SoundsEnabled { get => Settings.Shared.SoundsEnabled; set => Settings.Shared.SoundsEnabled = value; }
-    public string PushToTalk
+    /// Η συντόμευση «κράτα και μίλα» δεν μένει ποτέ κενή: χωρίς αυτήν δεν υπαγορεύεις.
+    public Combo PushToTalk
     {
-        get => Shortcuts.PushToTalkFor(Settings.Shared.PushToTalk).Id;
-        set { Settings.Shared.PushToTalk = value; Notify("shortcuts"); }
+        get => Combo.Parse(Settings.Shared.PushToTalk) is { IsEmpty: false } combo ? combo : Combo.Parse(Shortcuts.DefaultPushToTalk);
+        set { Settings.Shared.PushToTalk = value.ToString(); Notify("shortcuts"); }
     }
 
-    public string HandsFree
+    public Combo HandsFree
     {
-        get => Shortcuts.HandsFreeFor(Settings.Shared.HandsFree).Id;
-        set { Settings.Shared.HandsFree = value; Notify("shortcuts"); }
+        get => Combo.Parse(Settings.Shared.HandsFree);
+        set { Settings.Shared.HandsFree = value.ToString(); Notify("shortcuts"); }
     }
+
+    /// Καταγραφή νέας συντόμευσης από τα πλήκτρα (το συνδέει ο Controller με την παρακολούθηση πλήκτρων).
+    public Action<Action<Combo?>> CaptureShortcut = done => done(null);
+    public Action CancelCapture = () => { };
 
     public int DailyGoal { get => Settings.Shared.DailyGoal; set { Settings.Shared.DailyGoal = value; Notify("history"); } }
 

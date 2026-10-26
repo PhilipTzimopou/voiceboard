@@ -135,7 +135,7 @@ sealed class MainWindow : Window
                 if (page == Page.Home) RenderBanner();
                 break;
             case "shortcuts":
-                if (page == Page.Home) RenderPage(keepScroll: true);
+                if (page is Page.Home or Page.Settings) RenderPage(keepScroll: true);
                 break;
             case "model":
             case "whisper":
@@ -171,7 +171,11 @@ sealed class MainWindow : Window
                 HorizontalAlignment = HorizontalAlignment.Left,
                 Width = 176,
             };
-            var button = Ui.Button(label, () => { page = item; RenderNavigation(); RenderPage(); }, plain: true);
+            var button = Ui.Button(label, () =>
+            {
+                if (capturing != null) { model.CancelCapture(); capturing = null; }
+                page = item; RenderNavigation(); RenderPage();
+            }, plain: true);
             button.Background = selected ? Theme.SidebarSelection : Brushes.Transparent;
             button.Padding = new Thickness(12, 9, 12, 9);
             button.Margin = new Thickness(0, 0, 0, 4);
@@ -234,21 +238,23 @@ sealed class MainWindow : Window
         RenderTracker();
         RenderHistory();
 
-        var hold = Row(8, Text("Κράτα", wrap: false));
-        foreach (var (key, index) in Shortcuts.PushToTalkFor(model.PushToTalk).Keys.Select((k, i) => (k, i)))
+        var hold = new StackPanel { Orientation = Orientation.Horizontal };
+        void Add(StackPanel row, UIElement element) { if (element is FrameworkElement fe) fe.Margin = new Thickness(row.Children.Count == 0 ? 0 : 8, 0, 0, 0); row.Children.Add(element); }
+        Add(hold, Text("Κράτα", wrap: false));
+        foreach (var (key, index) in model.PushToTalk.Keys.Select((k, i) => (k, i)))
         {
-            if (index > 0) hold.Children.Add(Text("+", wrap: false));
-            hold.Children.Add(KeyCap(key));
+            if (index > 0) Add(hold, Text("+", wrap: false));
+            Add(hold, KeyCap(key));
         }
-        hold.Children.Add(Text("και μίλα.", wrap: false));
-        foreach (FrameworkElement child in hold.Children) child.Margin = new Thickness(hold.Children.IndexOf(child) == 0 ? 0 : 8, 0, 0, 0);
-        var others = Row(8, KeyCap("Esc"), Text("ακύρωση", color: Theme.Secondary, wrap: false));
-        if (model.HandsFree != "none")
+        Add(hold, Text("και μίλα.", wrap: false));
+        var others = new StackPanel { Orientation = Orientation.Horizontal };
+        if (!model.HandsFree.IsEmpty)
         {
-            others.Children.Insert(0, Text("χωρίς χέρια", color: Theme.Secondary, wrap: false));
-            others.Children.Insert(0, KeyCap(Shortcuts.HandsFreeFor(model.HandsFree).Label));
-            foreach (FrameworkElement child in others.Children) child.Margin = new Thickness(others.Children.IndexOf(child) == 0 ? 0 : 8, 0, 0, 0);
+            Add(others, KeyCap(model.HandsFree.Label));
+            Add(others, Text("χωρίς χέρια", color: Theme.Secondary, wrap: false));
         }
+        Add(others, KeyCap("Esc"));
+        Add(others, Text("ακύρωση", color: Theme.Secondary, wrap: false));
         var shortcuts = Card(Spread(hold, others));
 
         return Stack(24,
@@ -715,14 +721,14 @@ sealed class MainWindow : Window
         var startup = Check("Άνοιγμα με την εκκίνηση των Windows", model.LaunchAtLogin, value => model.LaunchAtLogin = value);
         var audio = Card(Stack(14, Text("Μικρόφωνο και ήχοι", 15, bold: true), Row(10, Text("Μικρόφωνο", wrap: false), microphones), sounds, startup));
 
-        var holdPicker = Picker(Shortcuts.PushToTalk.Select(o => (o.Id, Shortcuts.Label(o))), model.PushToTalk, id => model.PushToTalk = id);
-        var handsFreePicker = Picker(Shortcuts.HandsFree.Select(o => (o.Id, o.Label)), model.HandsFree, id => model.HandsFree = id);
         var shortcuts = Card(Stack(12,
             Text("Συντομεύσεις", 15, bold: true),
-            Labeled("Κράτα πατημένα και μίλα", holdPicker),
-            Labeled("Χωρίς χέρια (ξανά κλικ για τέλος)", handsFreePicker),
+            ShortcutRow("Κράτα πατημένα και μίλα", "ptt", model.PushToTalk, Combo.Parse(Shortcuts.DefaultPushToTalk)),
+            ShortcutRow("Χωρίς χέρια (ξανά για τέλος)", "hands", model.HandsFree, Combo.Parse(Shortcuts.DefaultHandsFree)),
             Shortcut(["Esc"], "Ακύρωση"),
-            Text("Η προεπιλογή, Ctrl + Win, είναι ίδια με το Wispr Flow για Windows. Το κουμπί του ποντικιού που διαλέγεις δεν κάνει πια τη συνηθισμένη του δουλειά, π.χ. το μεσαίο κλικ δεν ανοίγει συνδέσμους σε νέα καρτέλα.", 12, color: Theme.Secondary)));
+            shortcutError == null ? new Border() : Row(6, Icon("\uE7BA", 12, Theme.Orange), Text(shortcutError, 12, color: Theme.Orange)),
+            Text("Πάτα «Αλλαγή» και μετά τα πλήκτρα που θέλεις (π.χ. Ctrl + Space, δεξί Alt, F8) ή ένα κουμπί του ποντικιού. " +
+                 "Τα πλήκτρα της συντόμευσης δεν φτάνουν πια στις άλλες εφαρμογές, ούτε το κουμπί του ποντικιού που διαλέγεις.", 12, color: Theme.Secondary)));
 
         var permissions = Card(Stack(12,
             Text("Άδειες", 15, bold: true),
@@ -790,17 +796,64 @@ sealed class MainWindow : Window
         return option;
     }
 
-    private static ComboBox Picker(IEnumerable<(string Id, string Label)> options, string selected, Action<string> changed)
+    private string? capturing;      // "ptt" ή "hands" όσο καταγράφεται νέα συντόμευση
+    private string? shortcutError;
+
+    private DockPanel ShortcutRow(string title, string which, Combo combo, Combo fallback)
     {
-        var box = new ComboBox { Width = 300, FontSize = 13, HorizontalAlignment = HorizontalAlignment.Left };
-        foreach (var (id, label) in options)
+        var keys = new StackPanel { Orientation = Orientation.Horizontal };
+        if (capturing == which)
+            keys.Children.Add(Text("Πάτα τα πλήκτρα ή ένα κουμπί του ποντικιού… (Esc για ακύρωση)", 13, bold: true, color: Theme.Blue, wrap: false));
+        else
+            foreach (var key in combo.Keys)
+            {
+                if (keys.Children.Count > 0) keys.Children.Add(new TextBlock { Text = "+", Margin = new Thickness(6, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center });
+                keys.Children.Add(KeyCap(key));
+            }
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(12, 0, 0, 0) };
+        void Add(Button button) { button.Margin = new Thickness(buttons.Children.Count == 0 ? 0 : 6, 0, 0, 0); buttons.Children.Add(button); }
+        if (capturing == which)
         {
-            var item = new ComboBoxItem { Content = label, Tag = id };
-            box.Items.Add(item);
-            if (id == selected) box.SelectedItem = item;
+            Add(Ui.Button("Άκυρο", () => { model.CancelCapture(); capturing = null; RenderPage(keepScroll: true); }));
         }
-        box.SelectionChanged += (_, _) => { if (box.SelectedItem is ComboBoxItem item) changed((string)item.Tag); };
-        return box;
+        else
+        {
+            Add(Ui.Button("Αλλαγή", () => StartCapture(which)));
+            if (combo != fallback) Add(Ui.Button("Προεπιλογή", () => SetShortcut(which, fallback)));
+            if (which == "hands" && !combo.IsEmpty) Add(Ui.Button("Καμία", () => SetShortcut(which, Combo.None)));
+        }
+        var row = Labeled(title, keys);
+        DockPanel.SetDock(buttons, Dock.Right);
+        row.Children.Insert(1, buttons);
+        return row;
+    }
+
+    private void StartCapture(string which)
+    {
+        if (capturing != null) model.CancelCapture();
+        capturing = which;
+        shortcutError = null;
+        RenderPage(keepScroll: true);
+        model.CaptureShortcut(combo =>
+        {
+            if (capturing != which) return;
+            capturing = null;
+            if (combo != null) SetShortcut(which, combo);
+            else RenderPage(keepScroll: true);
+        });
+    }
+
+    private void SetShortcut(string which, Combo combo)
+    {
+        var other = which == "ptt" ? model.HandsFree : model.PushToTalk;
+        shortcutError = null;
+        if (!combo.IsEmpty && !combo.IsSafe)
+            shortcutError = $"Το «{combo.Label}» το πατάς συχνά όταν γράφεις. Διάλεξε συνδυασμό με Ctrl, Alt ή Win, ένα πλήκτρο F (F1-F24) ή κουμπί του ποντικιού.";
+        else if (!combo.IsEmpty && combo == other)
+            shortcutError = $"Το «{combo.Label}» είναι ήδη η άλλη συντόμευση.";
+        else if (which == "ptt") model.PushToTalk = combo;
+        else model.HandsFree = combo;
+        RenderPage(keepScroll: true);
     }
 
     private static DockPanel Labeled(string label, UIElement control)
