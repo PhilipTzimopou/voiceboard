@@ -84,6 +84,8 @@ def png(size, raw):
 
 
 def main():
+    # Η κονσόλα των Windows δεν γράφει πάντα ελληνικά (cp1252)· γράφουμε σε UTF-8.
+    sys.stdout.reconfigure(encoding="utf-8")
     output = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.abspath(__file__)), "build", "Voiceboard.ico")
     os.makedirs(os.path.dirname(output), exist_ok=True)
     sizes = [16, 24, 32, 48, 64, 128, 256]
