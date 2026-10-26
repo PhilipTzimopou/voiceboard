@@ -727,7 +727,7 @@ sealed class MainWindow : Window
             ShortcutRow("Χωρίς χέρια (ξανά για τέλος)", "hands", model.HandsFree, Combo.Parse(Shortcuts.DefaultHandsFree)),
             Shortcut(["Esc"], "Ακύρωση"),
             shortcutError == null ? new Border() : Row(6, Icon("\uE7BA", 12, Theme.Orange), Text(shortcutError, 12, color: Theme.Orange)),
-            Text("Πάτα «Αλλαγή» και μετά τα πλήκτρα που θέλεις (π.χ. Ctrl + Space, δεξί Alt, F8) ή ένα κουμπί του ποντικιού. " +
+            Text("Πάτα «Αλλαγή» και μετά τα πλήκτρα που θέλεις (π.χ. Ctrl + Space, δεξί Ctrl, F8) ή ένα κουμπί του ποντικιού. " +
                  "Τα πλήκτρα της συντόμευσης δεν φτάνουν πια στις άλλες εφαρμογές, ούτε το κουμπί του ποντικιού που διαλέγεις.", 12, color: Theme.Secondary)));
 
         var permissions = Card(Stack(12,
