@@ -1,23 +1,25 @@
 import AppKit
 import CoreGraphics
 
-/// Οι συντομεύσεις (ίδιες με το Wispr Flow):
-/// - κράτα Control + Option: ηχογράφηση όσο τα κρατάς
-/// - μεσαίο κλικ: ηχογράφηση χωρίς χέρια, ξανά κλικ για τέλος
+/// Οι συντομεύσεις (αλλάζουν από τις Ρυθμίσεις, Shortcuts.swift):
+/// - κράτα τα πλήκτρα (προεπιλογή Control + Option): ηχογράφηση όσο τα κρατάς
+/// - κουμπί ποντικιού (προεπιλογή μεσαίο κλικ): ηχογράφηση χωρίς χέρια, ξανά κλικ για τέλος
 /// - Esc: ακύρωση
 ///
 /// Η παρακολούθηση τρέχει σε δικό της νήμα, ώστε τίποτα στο κύριο νήμα (παράθυρο, μικρόφωνο)
 /// να μην την καθυστερεί. Όλες οι ειδοποιήσεις φτάνουν στο κύριο νήμα.
 final class HotkeyMonitor {
-    /// Κάθε αλλαγή στα πλήκτρα Control/Option: true όταν κρατάς και τα δύο (χωρίς Cmd/Shift).
+    /// Κάθε αλλαγή στα πλήκτρα: true όταν κρατάς ακριβώς τα πλήκτρα της συντόμευσης.
     var onPushToTalkKeys: (Bool) -> Void = { _ in }
     var onToggleHandsFree: () -> Void = {}
-    /// Esc ή συντόμευση άλλης εφαρμογής (Control + Option + πλήκτρο) αμέσως μετά το πάτημα.
+    /// Esc ή συντόμευση άλλης εφαρμογής (τα πλήκτρα μας + άλλο πλήκτρο) αμέσως μετά το πάτημα.
     var onCancel: () -> Void = {}
 
     private let lock = NSLock()
     private var recording = false
     private var pushToTalkStartedAt: Date?
+    private var pushToTalk = "control-option"
+    private var handsFreeButton: Int64? = 2
     private var tap: CFMachPort?
     private var thread: Thread?
 
@@ -28,6 +30,14 @@ final class HotkeyMonitor {
         lock.lock()
         recording = value
         pushToTalkStartedAt = value && pushToTalk ? Date() : nil
+        lock.unlock()
+    }
+
+    /// Οι συντομεύσεις από τις Ρυθμίσεις. Αλλάζουν αμέσως, χωρίς επανεκκίνηση.
+    func configure(pushToTalk: String, handsFree: String) {
+        lock.lock()
+        self.pushToTalk = Shortcuts.pushToTalk(pushToTalk).id
+        handsFreeButton = Shortcuts.handsFree(handsFree).button
         lock.unlock()
     }
 
@@ -73,9 +83,8 @@ final class HotkeyMonitor {
             Log.write("Η παρακολούθηση πλήκτρων απενεργοποιήθηκε από το σύστημα, ξαναξεκίνησε")
 
         case .flagsChanged:
-            let flags = event.flags
-            let held = flags.contains(.maskControl) && flags.contains(.maskAlternate)
-                && !flags.contains(.maskCommand) && !flags.contains(.maskShift)
+            lock.lock(); let preset = pushToTalk; lock.unlock()
+            let held = Shortcuts.matches(preset, event.flags)
             DispatchQueue.main.async { self.onPushToTalkKeys(held) }
 
         case .keyDown:
@@ -88,20 +97,22 @@ final class HotkeyMonitor {
                 DispatchQueue.main.async { self.onCancel() }
                 return nil
             }
-            // Control + Option + πλήκτρο αμέσως μετά το πάτημα = συντόμευση άλλης εφαρμογής.
+            // Τα πλήκτρα μας + άλλο πλήκτρο αμέσως μετά το πάτημα = συντόμευση άλλης εφαρμογής.
             // Αργότερα (ενώ ήδη μιλάς) δεν ακυρώνουμε, για να μη χάνεται υπαγόρευση από κάποιο τυχαίο πλήκτρο.
             if let startedAt, Date().timeIntervalSince(startedAt) < 0.6 {
                 DispatchQueue.main.async { self.onCancel() }
             }
 
         case .otherMouseDown:
-            if event.getIntegerValueField(.mouseEventButtonNumber) == 2 {
+            lock.lock(); let button = handsFreeButton; lock.unlock()
+            if let button, event.getIntegerValueField(.mouseEventButtonNumber) == button {
                 DispatchQueue.main.async { self.onToggleHandsFree() }
                 return nil
             }
 
         case .otherMouseUp:
-            if event.getIntegerValueField(.mouseEventButtonNumber) == 2 { return nil }
+            lock.lock(); let button = handsFreeButton; lock.unlock()
+            if let button, event.getIntegerValueField(.mouseEventButtonNumber) == button { return nil }
 
         default:
             break

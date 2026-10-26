@@ -26,6 +26,12 @@ final class AppModel: ObservableObject {
     @Published var soundsEnabled = Settings.shared.soundsEnabled {
         didSet { Settings.shared.soundsEnabled = soundsEnabled }
     }
+    @Published var pushToTalk = Settings.shared.pushToTalk {
+        didSet { Settings.shared.pushToTalk = pushToTalk; shortcutsChanged() }
+    }
+    @Published var handsFree = Settings.shared.handsFree {
+        didSet { Settings.shared.handsFree = handsFree; shortcutsChanged() }
+    }
     @Published var dailyGoal = Settings.shared.dailyGoal {
         didSet { Settings.shared.dailyGoal = dailyGoal }
     }
@@ -41,6 +47,7 @@ final class AppModel: ObservableObject {
     var resetAccessibility: () -> Void = {}
     var openMicrophone: () -> Void = {}
     var openLog: () -> Void = {}
+    var shortcutsChanged: () -> Void = {}
 
     var stats: DictationStats { DictationStats(history) }
 
@@ -277,11 +284,17 @@ struct HomeView: View {
             Card {
                 HStack(spacing: 8) {
                     Text("Κράτα").font(Theme.font(13))
-                    KeyCap(label: "⌃ Control"); Text("+").font(Theme.font(13)); KeyCap(label: "⌥ Option")
+                    let keys = Shortcuts.pushToTalk(model.pushToTalk).keys
+                    ForEach(Array(keys.enumerated()), id: \.offset) { index, key in
+                        if index > 0 { Text("+").font(Theme.font(13)) }
+                        KeyCap(label: key)
+                    }
                     Text("και μίλα.").font(Theme.font(13))
                     Spacer()
-                    KeyCap(label: "Μεσαίο κλικ")
-                    Text("χωρίς χέρια").font(Theme.font(13)).foregroundStyle(Theme.secondary)
+                    if model.handsFree != "none" {
+                        KeyCap(label: Shortcuts.handsFree(model.handsFree).label)
+                        Text("χωρίς χέρια").font(Theme.font(13)).foregroundStyle(Theme.secondary)
+                    }
                     KeyCap(label: "Esc")
                     Text("ακύρωση").font(Theme.font(13)).foregroundStyle(Theme.secondary)
                 }
@@ -899,10 +912,17 @@ struct SettingsView: View {
             Card {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Συντομεύσεις").font(Theme.font(15, bold: true))
-                    Text("Ίδιες με το Wispr Flow.").font(Theme.font(13)).foregroundStyle(Theme.secondary)
-                    shortcut(["⌃ Control", "⌥ Option"], "Κράτα πατημένα και μίλα")
-                    shortcut(["Μεσαίο κλικ"], "Χωρίς χέρια, ξανά κλικ για τέλος")
+                    Picker("Κράτα πατημένα και μίλα", selection: $model.pushToTalk) {
+                        ForEach(Shortcuts.pushToTalk) { option in Text(option.label).tag(option.id) }
+                    }
+                    .font(Theme.font(13))
+                    Picker("Χωρίς χέρια (ξανά κλικ για τέλος)", selection: $model.handsFree) {
+                        ForEach(Shortcuts.handsFree) { option in Text(option.label).tag(option.id) }
+                    }
+                    .font(Theme.font(13))
                     shortcut(["Esc"], "Ακύρωση")
+                    Text("Η προεπιλογή, Control + Option, είναι ίδια με το Wispr Flow. Το κουμπί του ποντικιού που διαλέγεις δεν κάνει πια τη συνηθισμένη του δουλειά, π.χ. το μεσαίο κλικ δεν ανοίγει συνδέσμους σε νέα καρτέλα.")
+                        .font(Theme.font(12)).foregroundStyle(Theme.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }
 

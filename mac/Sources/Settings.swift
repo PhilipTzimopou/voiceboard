@@ -78,6 +78,18 @@ final class Settings {
         set { defaults.set(newValue, forKey: "soundsEnabled") }
     }
 
+    /// Τα πλήκτρα που κρατάς για να μιλήσεις (Shortcuts.pushToTalk).
+    var pushToTalk: String {
+        get { defaults.string(forKey: "pushToTalk") ?? "control-option" }
+        set { defaults.set(newValue, forKey: "pushToTalk") }
+    }
+
+    /// Το κουμπί του ποντικιού για ηχογράφηση χωρίς χέρια (Shortcuts.handsFree).
+    var handsFree: String {
+        get { defaults.string(forKey: "handsFree") ?? "middle" }
+        set { defaults.set(newValue, forKey: "handsFree") }
+    }
+
     /// Ημερήσιος στόχος λέξεων για το habit tracker.
     var dailyGoal: Int {
         get { defaults.object(forKey: "dailyGoal") as? Int ?? 1000 }

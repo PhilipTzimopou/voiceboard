@@ -5,34 +5,45 @@ using static Voiceboard.Native;
 
 namespace Voiceboard;
 
-/// Οι συντομεύσεις, όπως στο Wispr Flow για Windows και στο Control + Option της έκδοσης Mac:
-/// - κράτα Ctrl + Win: ηχογράφηση όσο τα κρατάς
-/// - μεσαίο κλικ: ηχογράφηση χωρίς χέρια, ξανά κλικ για τέλος
+/// Οι συντομεύσεις (αλλάζουν από τις Ρυθμίσεις, Shortcuts.cs):
+/// - κράτα τα πλήκτρα (προεπιλογή Ctrl + Win, όπως στο Wispr Flow για Windows): ηχογράφηση όσο τα κρατάς
+/// - κουμπί ποντικιού (προεπιλογή μεσαίο κλικ): ηχογράφηση χωρίς χέρια, ξανά κλικ για τέλος
 /// - Esc: ακύρωση (μόνο όσο ηχογραφεί)
 ///
 /// Η παρακολούθηση (low-level hooks) τρέχει σε δικό της νήμα, ώστε τίποτα στο παράθυρο ή στο μικρόφωνο
 /// να μην την καθυστερεί: τα Windows αφαιρούν σιωπηλά ένα hook που αργεί. Όλες οι ειδοποιήσεις φτάνουν στο νήμα του παραθύρου.
 sealed class HotkeyMonitor(Dispatcher ui)
 {
-    /// Κάθε αλλαγή: true όταν κρατάς Ctrl και Win (χωρίς Shift/Alt).
+    /// Κάθε αλλαγή: true όταν κρατάς ακριβώς τα πλήκτρα της συντόμευσης.
     public Action<bool> OnPushToTalkKeys = _ => { };
     public Action OnToggleHandsFree = () => { };
-    /// Esc, ή συντόμευση των Windows (Ctrl + Win + πλήκτρο) αμέσως μετά το πάτημα.
+    /// Esc, ή συντόμευση των Windows (τα πλήκτρα μας + άλλο πλήκτρο) αμέσως μετά το πάτημα.
     public Action OnCancel = () => { };
+
+    private const int WM_XBUTTONDOWN = 0x020B, WM_XBUTTONUP = 0x020C;
 
     private readonly object gate = new();
     private bool recording;
     private DateTime? pushToTalkStartedAt;
+    private volatile string pushToTalk = "ctrl-win";
+    private volatile string handsFree = "middle";
 
     // Μόνο από το νήμα των hooks
     private bool lctrl, rctrl, lwin, rwin, lshift, rshift, lalt, ralt;
-    private bool held, winUsed;
+    private bool held;
 
     private HookProc? keyboardProc, mouseProc;   // κρατάμε αναφορά, αλλιώς ο garbage collector τα σβήνει
     private IntPtr keyboardHook, mouseHook;
     private uint threadId;
 
     public bool IsRunning => keyboardHook != IntPtr.Zero && mouseHook != IntPtr.Zero;
+
+    /// Οι συντομεύσεις από τις Ρυθμίσεις. Αλλάζουν αμέσως, χωρίς επανεκκίνηση.
+    public void Configure(string pushToTalkId, string handsFreeId)
+    {
+        pushToTalk = pushToTalkId;
+        handsFree = handsFreeId;
+    }
 
     /// Ενημερώνεται από τον Controller, ώστε το Esc να «πιάνεται» μόνο όταν ηχογραφεί.
     public void SetRecording(bool value, bool pushToTalk)
@@ -114,20 +125,15 @@ sealed class HotkeyMonitor(Dispatcher ui)
 
         if (isModifier)
         {
-            var now = (lctrl || rctrl) && (lwin || rwin) && !(lshift || rshift) && !(lalt || ralt);
+            var now = Shortcuts.Matches(pushToTalk, lctrl || rctrl, rctrl && !lctrl, lwin || rwin, lshift || rshift, lalt || ralt);
             if (now != held)
             {
                 held = now;
-                if (now) winUsed = true;
+                // Ένα «κενό» πλήκτρο ενώ κρατάς τα πλήκτρα: όταν τα αφήσεις, τα Windows δεν ανοίγουν το μενού Έναρξη (Win),
+                // η εφαρμογή δεν πάει στο μενού της (Alt) και δεν αλλάζει η γλώσσα πληκτρολογίου (Ctrl + Shift),
+                // γιατί είδαν άλλο πλήκτρο ανάμεσα. Το πλήκτρο δεν έχει αντιστοίχιση και καμία εφαρμογή δεν το χρησιμοποιεί.
+                if (now) Send(Key(VK_MASK, false), Key(VK_MASK, true));
                 Post(() => OnPushToTalkKeys(now));
-            }
-            // Αφήνεις το Win μετά την υπαγόρευση: τα Windows θα άνοιγαν το μενού Έναρξη, γιατί δεν είδαν άλλο πλήκτρο
-            // ανάμεσα. Κρατάμε το άφημα, στέλνουμε ένα «κενό» πλήκτρο και μετά το άφημα του Win.
-            if (!down && vk is VK_LWIN or VK_RWIN && winUsed && !lwin && !rwin)
-            {
-                winUsed = false;
-                Send(Key(VK_MASK, false), Key(VK_MASK, true), Key(vk, true, extended: true));
-                return 1;
             }
             return CallNextHookEx(IntPtr.Zero, code, wParam, lParam);
         }
@@ -142,7 +148,7 @@ sealed class HotkeyMonitor(Dispatcher ui)
                 Post(() => OnCancel());
                 return 1;
             }
-            // Ctrl + Win + πλήκτρο αμέσως μετά το πάτημα = συντόμευση των Windows (π.χ. νέα επιφάνεια εργασίας).
+            // Τα πλήκτρα μας + άλλο πλήκτρο αμέσως μετά το πάτημα = συντόμευση των Windows (π.χ. Ctrl + Win + D).
             // Αργότερα (ενώ ήδη μιλάς) δεν ακυρώνουμε, για να μη χάνεται υπαγόρευση από κάποιο τυχαίο πλήκτρο.
             if (startedAt is { } started && DateTime.UtcNow - started < TimeSpan.FromSeconds(0.6)) Post(() => OnCancel());
         }
@@ -167,13 +173,18 @@ sealed class HotkeyMonitor(Dispatcher ui)
             var info = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
             if ((info.flags & LLMHF_INJECTED) == 0)
             {
-                switch ((int)wParam)
+                var message = (int)wParam;
+                // Πλαϊνά κουμπιά: το ποιο από τα δύο λέει η πάνω λέξη του mouseData (1 = πίσω, 2 = μπροστά).
+                var button = message switch
                 {
-                    case WM_MBUTTONDOWN:
-                        Post(() => OnToggleHandsFree());
-                        return 1;
-                    case WM_MBUTTONUP:
-                        return 1;
+                    WM_MBUTTONDOWN or WM_MBUTTONUP => "middle",
+                    WM_XBUTTONDOWN or WM_XBUTTONUP => (info.mouseData >> 16) == 1 ? "back" : "forward",
+                    _ => null,
+                };
+                if (button != null && button == handsFree)
+                {
+                    if (message is WM_MBUTTONDOWN or WM_XBUTTONDOWN) Post(() => OnToggleHandsFree());
+                    return 1;   // το κλικ δεν φτάνει στην εφαρμογή από κάτω
                 }
             }
         }

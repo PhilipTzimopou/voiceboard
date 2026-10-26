@@ -64,6 +64,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotkeys.onPushToTalkKeys = { [weak self] held in self?.pushToTalkKeys(held) }
         hotkeys.onToggleHandsFree = { [weak self] in self?.toggleHandsFree() }
         hotkeys.onCancel = { [weak self] in self?.cancel() }
+        hotkeys.configure(pushToTalk: model.pushToTalk, handsFree: model.handsFree)
 
         AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
             if !granted { Log.write("Δεν δόθηκε άδεια μικροφώνου") }
@@ -99,6 +100,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func wireModel() {
         model.importFromWispr = { [weak self] in self?.importFromWispr(showResult: true) }
+        model.shortcutsChanged = { [weak self] in
+            guard let self else { return }
+            self.hotkeys.configure(pushToTalk: self.model.pushToTalk, handsFree: self.model.handsFree)
+            Log.write("Συντομεύσεις: \(Shortcuts.pushToTalk(self.model.pushToTalk).label), \(Shortcuts.handsFree(self.model.handsFree).label)")
+        }
         model.openAccessibility = {
             NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
         }
@@ -154,7 +160,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard NSWorkspace.shared.runningApplications.contains(where: { $0.bundleIdentifier == "com.electron.wispr-flow" }) else { return }
         let alert = NSAlert()
         alert.messageText = "Το Wispr Flow είναι ανοιχτό"
-        alert.informativeText = "Χρησιμοποιεί την ίδια συντόμευση (Control + Option), οπότε θα ηχογραφούν και οι δύο εφαρμογές μαζί. Κλείσε το Wispr Flow από το εικονίδιό του στη γραμμή μενού."
+        alert.informativeText = "Αν χρησιμοποιεί την ίδια συντόμευση, θα ηχογραφούν και οι δύο εφαρμογές μαζί. Κλείσε το Wispr Flow από το εικονίδιό του στη γραμμή μενού, ή άλλαξε τα πλήκτρα στις Ρυθμίσεις του Voiceboard."
         alert.addButton(withTitle: "Εντάξει")
         NSApp.activate(ignoringOtherApps: true)
         alert.runModal()
@@ -208,7 +214,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Ελέγχει την ηχογράφηση πέντε φορές το δευτερόλεπτο:
-    /// - αν άφησες Control/Option αλλά το μήνυμα χάθηκε, σταματά (αλλιώς η ηχογράφηση «κολλάει»)
+    /// - αν άφησες τα πλήκτρα αλλά το μήνυμα χάθηκε, σταματά (αλλιώς η ηχογράφηση «κολλάει»)
     /// - αν το μικρόφωνο δεν δίνει ήχο, ξαναξεκινά με την προεπιλογή του συστήματος και το δείχνει
     /// - στα 15 λεπτά τελειώνει μόνη της
     private func startWatchdog() {
@@ -227,7 +233,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let elapsed = Date().timeIntervalSince(current.started)
         if !current.handsFree, elapsed > 0.3 {
             let flags = CGEventSource.flagsState(.combinedSessionState)
-            if !(flags.contains(.maskControl) && flags.contains(.maskAlternate)) {
+            if !Shortcuts.stillHeld(model.pushToTalk, flags) {
                 Log.write("Τα πλήκτρα έχουν αφεθεί χωρίς να έρθει μήνυμα, τελειώνω την ηχογράφηση")
                 finishRecording()
                 return

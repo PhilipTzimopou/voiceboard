@@ -131,6 +131,9 @@ sealed class MainWindow : Window
                 else if (page == Page.Settings) RenderPage(keepScroll: true);
                 if (page == Page.Home) RenderBanner();
                 break;
+            case "shortcuts":
+                if (page == Page.Home) RenderPage(keepScroll: true);
+                break;
             case "model":
             case "whisper":
             case "devices":
@@ -228,9 +231,22 @@ sealed class MainWindow : Window
         RenderTracker();
         RenderHistory();
 
-        var shortcuts = Card(Spread(
-            Row(8, Text("Κράτα", wrap: false), KeyCap("Ctrl"), Text("+", wrap: false), KeyCap("Win"), Text("και μίλα.", wrap: false)),
-            Row(8, KeyCap("Μεσαίο κλικ"), Text("χωρίς χέρια", color: Theme.Secondary, wrap: false), KeyCap("Esc"), Text("ακύρωση", color: Theme.Secondary, wrap: false))));
+        var hold = Row(8, Text("Κράτα", wrap: false));
+        foreach (var (key, index) in Shortcuts.PushToTalkFor(model.PushToTalk).Keys.Select((k, i) => (k, i)))
+        {
+            if (index > 0) hold.Children.Add(Text("+", wrap: false));
+            hold.Children.Add(KeyCap(key));
+        }
+        hold.Children.Add(Text("και μίλα.", wrap: false));
+        foreach (FrameworkElement child in hold.Children) child.Margin = new Thickness(hold.Children.IndexOf(child) == 0 ? 0 : 8, 0, 0, 0);
+        var others = Row(8, KeyCap("Esc"), Text("ακύρωση", color: Theme.Secondary, wrap: false));
+        if (model.HandsFree != "none")
+        {
+            others.Children.Insert(0, Text("χωρίς χέρια", color: Theme.Secondary, wrap: false));
+            others.Children.Insert(0, KeyCap(Shortcuts.HandsFreeFor(model.HandsFree).Label));
+            foreach (FrameworkElement child in others.Children) child.Margin = new Thickness(others.Children.IndexOf(child) == 0 ? 0 : 8, 0, 0, 0);
+        }
+        var shortcuts = Card(Spread(hold, others));
 
         return Stack(24,
             SectionTitle("Καλώς ήρθες"),
@@ -696,12 +712,14 @@ sealed class MainWindow : Window
         var startup = Check("Άνοιγμα με την εκκίνηση των Windows", model.LaunchAtLogin, value => model.LaunchAtLogin = value);
         var audio = Card(Stack(14, Text("Μικρόφωνο και ήχοι", 15, bold: true), Row(10, Text("Μικρόφωνο", wrap: false), microphones), sounds, startup));
 
-        var shortcuts = Card(Stack(10,
+        var holdPicker = Picker(Shortcuts.PushToTalk.Select(o => (o.Id, Shortcuts.Label(o))), model.PushToTalk, id => model.PushToTalk = id);
+        var handsFreePicker = Picker(Shortcuts.HandsFree.Select(o => (o.Id, o.Label)), model.HandsFree, id => model.HandsFree = id);
+        var shortcuts = Card(Stack(12,
             Text("Συντομεύσεις", 15, bold: true),
-            Text("Ίδιες με το Wispr Flow για Windows.", 13, color: Theme.Secondary),
-            Shortcut(["Ctrl", "Win"], "Κράτα πατημένα και μίλα"),
-            Shortcut(["Μεσαίο κλικ"], "Χωρίς χέρια, ξανά κλικ για τέλος"),
-            Shortcut(["Esc"], "Ακύρωση")));
+            Labeled("Κράτα πατημένα και μίλα", holdPicker),
+            Labeled("Χωρίς χέρια (ξανά κλικ για τέλος)", handsFreePicker),
+            Shortcut(["Esc"], "Ακύρωση"),
+            Text("Η προεπιλογή, Ctrl + Win, είναι ίδια με το Wispr Flow για Windows. Το κουμπί του ποντικιού που διαλέγεις δεν κάνει πια τη συνηθισμένη του δουλειά, π.χ. το μεσαίο κλικ δεν ανοίγει συνδέσμους σε νέα καρτέλα.", 12, color: Theme.Secondary)));
 
         var permissions = Card(Stack(12,
             Text("Άδειες", 15, bold: true),
@@ -767,6 +785,30 @@ sealed class MainWindow : Window
         radio.Margin = new Thickness(0, 0, 12, 0);
         if (enabled) option.MouseLeftButtonUp += (_, _) => select();
         return option;
+    }
+
+    private static ComboBox Picker(IEnumerable<(string Id, string Label)> options, string selected, Action<string> changed)
+    {
+        var box = new ComboBox { Width = 300, FontSize = 13, HorizontalAlignment = HorizontalAlignment.Left };
+        foreach (var (id, label) in options)
+        {
+            var item = new ComboBoxItem { Content = label, Tag = id };
+            box.Items.Add(item);
+            if (id == selected) box.SelectedItem = item;
+        }
+        box.SelectionChanged += (_, _) => { if (box.SelectedItem is ComboBoxItem item) changed((string)item.Tag); };
+        return box;
+    }
+
+    private static DockPanel Labeled(string label, UIElement control)
+    {
+        var text = Text(label, wrap: false);
+        text.Width = 240;
+        var row = new DockPanel();
+        DockPanel.SetDock(text, Dock.Left);
+        row.Children.Add(text);
+        row.Children.Add(control);
+        return row;
     }
 
     private static CheckBox Check(string text, bool value, Action<bool> changed)

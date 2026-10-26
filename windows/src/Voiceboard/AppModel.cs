@@ -43,6 +43,18 @@ sealed class AppModel
 
     public string MicrophoneId { get => Settings.Shared.MicrophoneId; set => Settings.Shared.MicrophoneId = value; }
     public bool SoundsEnabled { get => Settings.Shared.SoundsEnabled; set => Settings.Shared.SoundsEnabled = value; }
+    public string PushToTalk
+    {
+        get => Shortcuts.PushToTalkFor(Settings.Shared.PushToTalk).Id;
+        set { Settings.Shared.PushToTalk = value; Notify("shortcuts"); }
+    }
+
+    public string HandsFree
+    {
+        get => Shortcuts.HandsFreeFor(Settings.Shared.HandsFree).Id;
+        set { Settings.Shared.HandsFree = value; Notify("shortcuts"); }
+    }
+
     public int DailyGoal { get => Settings.Shared.DailyGoal; set { Settings.Shared.DailyGoal = value; Notify("history"); } }
 
     public Vocabulary Vocabulary { get; private set; } = Vocabulary.Load();

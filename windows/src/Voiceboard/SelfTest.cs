@@ -14,7 +14,7 @@ namespace Voiceboard;
 ///   Voiceboard.exe --self-test <φάκελος αποτελεσμάτων> [--model ggml.bin --wav φωνή.wav --language en --expect λέξη]
 /// Ελέγχει ό,τι γίνεται χωρίς άνθρωπο μπροστά στην οθόνη: φόρτωση και μεταγραφή Whisper, πρόχειρο, επικόλληση με Ctrl+V,
 /// παρακολούθηση πλήκτρων, μικρόφωνα, και βγάζει εικόνες από το παράθυρο και την ένδειξη για έλεγχο με το μάτι.
-/// Ό,τι θέλει άνθρωπο (μικρόφωνο, πραγματικό πάτημα Ctrl + Win, μενού Έναρξη) ΔΕΝ ελέγχεται εδώ.
+/// Ό,τι θέλει άνθρωπο (μικρόφωνο, πραγματικό πάτημα πλήκτρων, μενού Έναρξη) ΔΕΝ ελέγχεται εδώ.
 static class SelfTest
 {
     private sealed record Check(string Name, bool Passed, bool Required, string Detail);
@@ -48,7 +48,7 @@ static class SelfTest
             await Step("Εικόνες ένδειξης", true, () => RenderOverlay(output));
             await Step("Πρόχειρο", true, ClipboardRoundTrip);
             await Step("Επικόλληση με Ctrl+V και επαναφορά προχείρου", false, PasteIntoTextBox);
-            await Step("Παρακολούθηση πλήκτρων (Ctrl + Win)", false, HotkeysSeeInjectedKeys);
+            await Step("Παρακολούθηση πλήκτρων (όλες οι επιλογές)", false, HotkeysSeeInjectedKeys);
             var model = Arg("--model");
             if (model.Length > 0)
                 await Step("Whisper: φόρτωση και μεταγραφή", true, () => Transcribe(model, Arg("--wav"), Arg("--expect")));
@@ -179,25 +179,47 @@ static class SelfTest
         return "μπήκε στο πεδίο, το πρόχειρο επανήλθε";
     }
 
+    /// Για κάθε επιλογή συντόμευσης: πατά και αφήνει τα πλήκτρα σαν πραγματικό πληκτρολόγιο και ελέγχει ότι
+    /// η παρακολούθηση είδε «πατημένα → αφέθηκαν». Επίσης ότι Ctrl + Win + Shift ΔΕΝ μετράει ως Ctrl + Win.
     private static async Task<string> HotkeysSeeInjectedKeys()
     {
         var events = new List<bool>();
         var monitor = new HotkeyMonitor(Dispatcher.CurrentDispatcher) { OnPushToTalkKeys = held => events.Add(held) };
         if (!monitor.Start()) throw new Exception("Δεν μπήκαν τα hooks");
-        static Native.INPUT Key(int vk, bool up, bool extended = false)
+        static Native.INPUT Key(int vk, bool up)
         {
-            var input = Native.Key(vk, up, extended);
+            var input = Native.Key(vk, up, extended: vk is Native.VK_LWIN or Native.VK_RWIN or Native.VK_RCONTROL or Native.VK_RMENU);
             input.u.ki.dwExtraInfo = UIntPtr.Zero;   // σαν πραγματικό πληκτρολόγιο, όχι σαν δικό μας πλήκτρο
             return input;
         }
-        Native.Send(Key(Native.VK_LCONTROL, false), Key(Native.VK_LWIN, false, true));
-        await Task.Delay(300);
-        Native.Send(Key(Native.VK_LWIN, true, true), Key(Native.VK_LCONTROL, true));
-        await Task.Delay(300);
+        async Task<string> Press(string preset, params int[] keys)
+        {
+            monitor.Configure(preset, "middle");
+            events.Clear();
+            Native.Send(keys.Select(k => Key(k, false)).ToArray());
+            await Task.Delay(300);
+            Native.Send(keys.Reverse().Select(k => Key(k, true)).ToArray());
+            await Task.Delay(300);
+            return string.Join(" → ", events.Select(e => e ? "πατημένα" : "αφέθηκαν"));
+        }
+        var results = new List<string>();
+        foreach (var (preset, keys) in new (string, int[])[]
+        {
+            ("ctrl-win", [Native.VK_LCONTROL, Native.VK_LWIN]),
+            ("ctrl-shift", [Native.VK_LCONTROL, Native.VK_LSHIFT]),
+            ("alt-win", [Native.VK_LMENU, Native.VK_LWIN]),
+            ("right-ctrl", [Native.VK_RCONTROL]),
+        })
+        {
+            var seen = await Press(preset, keys);
+            results.Add($"{preset}: {seen}");
+            if (seen != "πατημένα → αφέθηκαν") { monitor.Stop(); throw new Exception(string.Join("; ", results)); }
+        }
+        var extra = await Press("ctrl-win", Native.VK_LCONTROL, Native.VK_LSHIFT, Native.VK_LWIN);
         monitor.Stop();
-        var seen = string.Join(" → ", events.Select(e => e ? "πατημένα" : "αφέθηκαν"));
-        if (events.Count < 2 || !events[0] || events[^1]) throw new Exception($"Είδε: {seen}");
-        return seen;
+        results.Add($"ctrl-win με Shift: {(extra.Length == 0 ? "σωστά τίποτα" : extra)}");
+        if (extra.Contains("πατημένα")) throw new Exception(string.Join("; ", results));
+        return string.Join("; ", results);
     }
 
     private static async Task<string> Transcribe(string model, string wav, string expect)

@@ -94,6 +94,10 @@ public sealed class Preferences
     [JsonPropertyName("microphoneId")] public string MicrophoneId { get; set; } = "";
     [JsonPropertyName("soundsEnabled")] public bool SoundsEnabled { get; set; } = true;
     [JsonPropertyName("dailyGoal")] public int DailyGoal { get; set; } = 1000;
+    /// Τα πλήκτρα που κρατάς για να μιλήσεις: ctrl-win, ctrl-shift, alt-win, right-ctrl.
+    [JsonPropertyName("pushToTalk")] public string PushToTalk { get; set; } = "ctrl-win";
+    /// Το κουμπί του ποντικιού για ηχογράφηση χωρίς χέρια: middle, back, forward, none.
+    [JsonPropertyName("handsFree")] public string HandsFree { get; set; } = "middle";
 }
 
 public sealed class Settings
@@ -147,6 +151,18 @@ public sealed class Settings
     {
         get { lock (gate) return preferences.DailyGoal; }
         set { lock (gate) { preferences.DailyGoal = value; SavePreferences(); } }
+    }
+
+    public string PushToTalk
+    {
+        get { lock (gate) return preferences.PushToTalk; }
+        set { lock (gate) { preferences.PushToTalk = value; SavePreferences(); } }
+    }
+
+    public string HandsFree
+    {
+        get { lock (gate) return preferences.HandsFree; }
+        set { lock (gate) { preferences.HandsFree = value; SavePreferences(); } }
     }
 
     public string Language { get { lock (gate) return string.IsNullOrWhiteSpace(config.Language) ? "el" : config.Language!; } }

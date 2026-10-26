@@ -25,6 +25,6 @@
     <key>LSUIElement</key>
     <true/>
     <key>NSMicrophoneUsageDescription</key>
-    <string>Το Voiceboard ηχογραφεί όσο κρατάς Control + Option, για να γράψει ό,τι λες.</string>
+    <string>Το Voiceboard ηχογραφεί όσο κρατάς τη συντόμευση, για να γράψει ό,τι λες.</string>
 </dict>
 </plist>

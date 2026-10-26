@@ -64,6 +64,7 @@ sealed class Controller
         hotkeys.OnPushToTalkKeys = PushToTalkKeys;
         hotkeys.OnToggleHandsFree = ToggleHandsFree;
         hotkeys.OnCancel = Cancel;
+        hotkeys.Configure(model.PushToTalk, model.HandsFree);
 
         if (hotkeys.Start()) Log.Write("Οι συντομεύσεις είναι ενεργές");
         RefreshPermissions();
@@ -72,7 +73,15 @@ sealed class Controller
         permissions.Tick += (_, _) => RefreshPermissions();
         permissions.Start();
 
-        model.Changed += what => { if (what == "model") ApplySpeechModel(); };
+        model.Changed += what =>
+        {
+            if (what == "model") ApplySpeechModel();
+            if (what == "shortcuts")
+            {
+                hotkeys.Configure(model.PushToTalk, model.HandsFree);
+                Log.Write($"Συντομεύσεις: {Shortcuts.Label(Shortcuts.PushToTalkFor(model.PushToTalk))}, {Shortcuts.HandsFreeFor(model.HandsFree).Label}");
+            }
+        };
         ApplySpeechModel();
         model.RefreshDevices();
 
@@ -144,7 +153,7 @@ sealed class Controller
     {
         if (!Process.GetProcesses().Any(p => p.ProcessName.Contains("Wispr Flow", StringComparison.OrdinalIgnoreCase)
                                              || p.ProcessName.Equals("WisprFlow", StringComparison.OrdinalIgnoreCase))) return;
-        MessageBox.Show("Χρησιμοποιεί την ίδια συντόμευση (Ctrl + Win), οπότε θα ηχογραφούν και οι δύο εφαρμογές μαζί. Κλείσε το Wispr Flow από το εικονίδιό του στη γραμμή εργασιών.",
+        MessageBox.Show("Αν χρησιμοποιεί την ίδια συντόμευση, θα ηχογραφούν και οι δύο εφαρμογές μαζί. Κλείσε το Wispr Flow από το εικονίδιό του στη γραμμή εργασιών, ή άλλαξε τα πλήκτρα στις Ρυθμίσεις του Voiceboard.",
             "Το Wispr Flow είναι ανοιχτό", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
@@ -259,7 +268,7 @@ sealed class Controller
     }
 
     /// Ελέγχει την ηχογράφηση πέντε φορές το δευτερόλεπτο:
-    /// - αν άφησες Ctrl/Win αλλά το μήνυμα χάθηκε, σταματά (αλλιώς η ηχογράφηση «κολλάει»)
+    /// - αν άφησες τα πλήκτρα αλλά το μήνυμα χάθηκε, σταματά (αλλιώς η ηχογράφηση «κολλάει»)
     /// - αν το μικρόφωνο δεν δίνει ήχο, ξαναξεκινά με την προεπιλογή των Windows και το δείχνει
     /// - στα 15 λεπτά τελειώνει μόνη της
     private void StartWatchdog()
@@ -282,9 +291,7 @@ sealed class Controller
         var elapsed = DateTime.UtcNow - current.Started;
         if (!current.HandsFree && elapsed > TimeSpan.FromSeconds(0.3))
         {
-            var ctrl = Native.IsDown(Native.VK_CONTROL);
-            var win = Native.IsDown(Native.VK_LWIN) || Native.IsDown(Native.VK_RWIN);
-            if (!(ctrl && win))
+            if (!Shortcuts.PhysicallyHeld(model.PushToTalk))
             {
                 Log.Write("Τα πλήκτρα έχουν αφεθεί χωρίς να έρθει μήνυμα, τελειώνω την ηχογράφηση");
                 FinishRecording();
